@@ -32,6 +32,7 @@ public final class Core {
         public int left, top, right, bottom;
         public List<Container> ancestors;
         public boolean editable;
+        public String rawDescription="",nodeClass="";
         public Record(String text, boolean visible, Target target) {
             this.text = text; this.visible = visible; this.target = target;
         }

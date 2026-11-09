@@ -112,6 +112,7 @@ public final class MainActivity extends Activity implements AppState.Listener {
             catch(IllegalArgumentException error){AppState.issue(error.getMessage());}
         });
         button(controls, "只检测题目 · 不调用 API", false, v -> launch(true));
+        add(controls,label("检测会分三次读取同一道题，请保持页面约 20 秒，再复制问题反馈。此版用于排查旧节点缓存，尚未保证修复单题页面。",13,GRAY),8);
         button(controls, "开始自动答题", true, v -> launch(false));
         button(controls, "停止答题 · 保留保存的 Key", false, v -> {
             if (QuizService.instance != null) QuizService.instance.stopRun("已停止答题，保存的 Key 可以继续使用。");
@@ -123,6 +124,14 @@ public final class MainActivity extends Activity implements AppState.Listener {
             changed();
         });
         add(controls, label("运行时保持亮屏、解锁，学习通题目页面在前台。每 5 秒处理完整题目；无原生点击操作时会轻点已核对的选项位置。处理后可手动向下滚动。", 13, GRAY), 12);
+
+        LinearLayout webpage=card(content);
+        add(webpage,label("不截屏的网页答题",18,INK),0);
+        add(webpage,label("在助手内打开官方网页并进入题目。可先检测文字，再用已保存的 API 配置逐题答题；支持指定单题或处理本页多题，每 5 秒开始处理一道。网页模式不需要无障碍，保持题页前台；完成后自行核对并提交。",13,GRAY),8);
+        button(webpage,"打开官方网页答题",false,v->{
+            if(QuizService.instance!=null)QuizService.instance.stopRun("已停止 APP 模式，准备网页文字检测。");
+            cancelApiTest();startActivity(new Intent(this,WebActivity.class));
+        });
 
         LinearLayout output = card(content);
         add(output, label("当前状态", 18, INK), 0); status = label("", 15, BLUE); add(output, status, 8);
@@ -217,10 +226,12 @@ public final class MainActivity extends Activity implements AppState.Listener {
         new AlertDialog.Builder(this).setTitle("权限与数据说明").setMessage(
             "1. 无障碍是敏感权限：系统允许读取屏幕内容、操作界面。服务事件筛选为学习通，代码在读取节点文字前检查包名。请审查源码后决定是否授权，这不等于权限被系统硬隔离。\n\n" +
             "2. 只请求 INTERNET 普通权限，并通过受系统保护的无障碍服务声明绑定权限。不请求截屏、录屏、分屏、悬浮窗、存储、相机、麦克风、通讯录或设备管理员权限。\n\n" +
-            "3. 仅向 https://api.siliconflow.cn/v1/chat/completions 发送解析后的题干、题型和选项。使用系统证书校验，不跟随重定向。网络域名限制是代码约束。\n\n" +
+            "3. 模型请求仅向 https://api.siliconflow.cn/v1/chat/completions 发送解析后的题干、题型和选项。使用系统证书校验，不跟随重定向。网页模式另加载超星官方 HTTPS 页面、资源和网站脚本；导航与常规资源请求按域名过滤。这些是代码约束，并非系统网络硬隔离。\n\n" +
             "4. Key 使用 Android Keystore 的 AES-GCM 加密后保存到本机应用私有数据中，返回或重启会恢复。停止不会删除保存的 Key，可通过删除按钮清除。检测文字仅在内存展示；只有你点复制才会写入剪贴板。\n\n" +
-            "5. 不接入广告、统计、远程脚本或自动更新。应用不执行下载代码。系统和厂商后台策略仍可能暂停运行。\n\n" +
-            "6. WebView 选项没有原生点击操作时，通过无障碍手势在核对后的选项节点位置轻点。多选状态不明时，可自行开启空白题模式；须先取消已有勾选。程序只保存题目哈希、答案字母及点击状态，不保存题干到磁盘，记录可手动重置。问答题只生成参考答案，点击复制后再由你粘贴，不自动填写或提交。"
+            "5. 无广告 SDK、统计 SDK、自动更新或下载执行的原生程序。网页模式运行官方页面自带的 JavaScript；助手的脚本随安装包提供，没有 JavaScript 原生接口，不向网页注入 API Key。仅在主动检测或开始网页答题后读取题目区域，不读取登录表单。\n\n" +
+            "6. APP 模式可通过无障碍手势轻点已核对的选项；多选空白题模式须先取消已有勾选。程序只保存题目哈希、答案字母及点击状态，不保存题干到磁盘。问答题只生成参考答案，由你核对后粘贴，不自动填写或提交。\n\n" +
+            "7. 网页“检测文字”不调用模型或操作选项；“开始网页答题”使用本机保存的 API 配置，逐题请求模型，核对题目与选中状态后选择。Key 留在 Android 端，不放入网页。未知选中状态仅保留答案供手动核对；问答题只给参考答案，不自动填写。程序不点击保存、提交或交卷；网站自身可能保存选项变化。返回、跳转或停止会终止本轮操作。\n\n" +
+            "8. 网页模式不采集屏幕图像。Cookie 和站点存储由本机 WebView 保存，可点“清除网页登录”删除，不影响 API Key。网页答题在助手内打开的页面中运行，不能读取其他浏览器的内部网页。"
         ).setPositiveButton("知道了", null).show();
     }
 }

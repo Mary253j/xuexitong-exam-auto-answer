@@ -23,6 +23,8 @@ final class PageReader {
     static final String TARGET = "com.chaoxing.mobile";
     static final class Page {
         int windowId;
+        boolean complete=true;
+        String rawAudit="";
         final List<Core.Record> records = new ArrayList<>();
     }
     private static final class Entry {
@@ -44,9 +46,11 @@ final class PageReader {
         return metrics;
     }
     private static String text(AccessibilityNodeInfo node) {
-        CharSequence value = node.getText();
-        if (value == null || value.toString().trim().isEmpty()) value = node.getContentDescription();
-        return value == null ? "" : value.toString().trim();
+        CharSequence value=node.getText(),description=node.getContentDescription();
+        return AccessibleText.combine(value==null?"":value.toString(),description==null?"":description.toString());
+    }
+    private static boolean descendant(AccessibilityNodeInfo node,int window) {
+        return node!=null && AccessibleText.sameWindowPackage(node.getPackageName()==null?null:node.getPackageName().toString(),node.getWindowId(),window);
     }
     private static boolean targetPackage(AccessibilityNodeInfo node) {
         return node != null && TARGET.contentEquals(node.getPackageName() == null ? "" : node.getPackageName());
@@ -82,7 +86,7 @@ final class PageReader {
             while (!queue.isEmpty() && count++ < 80) {
                 AccessibilityNodeInfo n = queue.pop();
                 try {
-                    if (!targetPackage(n)) continue;
+                    if (!descendant(n,node.getWindowId())) continue;
                     if (n.isCheckable()) { checks++; checked = n.isChecked(); }
                     for (int i = 0; i < n.getChildCount(); i++) {
                         AccessibilityNodeInfo child = n.getChild(i);
@@ -105,7 +109,7 @@ final class PageReader {
                 if (++count > 80 || result.length() > 20000) return null;
                 AccessibilityNodeInfo n = queue.pop();
                 try {
-                    if (!targetPackage(n)) return null;
+                    if (!descendant(n,node.getWindowId())) return null;
                     String value = text(n);
                     result.append(value.length()).append(':').append(value);
                     for (int i = n.getChildCount() - 1; i >= 0; i--) {
@@ -123,7 +127,7 @@ final class PageReader {
         Boolean rowSelection=null;
         try {
             for (int depth = 0; n != null && depth < 6; depth++) {
-                if (!targetPackage(n)) break;
+                if (!descendant(n,original.getWindowId())) break;
                 Rect r = bounds(n);
                 if(depth<=2 && rowSelection==null && visible(n,r,dims) && r.height()<=dims.heightPixels*0.35)rowSelection=selection(n);
                 if (supportsClick(n) && n.isEnabled() && visible(n, r, dims) && r.height() <= dims.heightPixels * 0.4) {
@@ -151,7 +155,45 @@ final class PageReader {
             return null;
         } finally { release(n); }
     }
-    Page read() {
+    private String auditEnvironment() {
+        String version="未取得";
+        try {
+            android.content.pm.PackageInfo info=service.getPackageManager().getPackageInfo(TARGET,0);
+            version=info.versionName+" ("+(Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode)+")";
+        }catch(android.content.pm.PackageManager.NameNotFoundException ignored){}
+        android.accessibilityservice.AccessibilityServiceInfo info=service.getServiceInfo();
+        return "Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT+"\n学习通 "+version+
+            "\n无障碍配置 flags="+(info==null?"未取得":info.flags)+"，isAccessibilityTool="+
+            (Build.VERSION.SDK_INT>=31 && info!=null?info.isAccessibilityTool():"系统不支持查询")+"\n";
+    }
+    private static String chars(CharSequence value){return value==null?"":value.toString();}
+    private static ReadAudit.Node auditNode(AccessibilityNodeInfo n,int[] path,Rect box,boolean visible,
+            String raw,String description) {
+        ReadAudit.Node entry=new ReadAudit.Node();entry.path=path;entry.left=box.left;entry.top=box.top;
+        entry.right=box.right;entry.bottom=box.bottom;entry.window=n.getWindowId();
+        entry.packageName=chars(n.getPackageName());entry.kind=chars(n.getClassName());entry.viewId=n.getViewIdResourceName();
+        entry.visible=visible;entry.decision="节点读取未完成";entry.password=n.isPassword();
+        if(!entry.password){
+            entry.raw=raw;entry.description=description;entry.hint=chars(n.getHintText());
+            if(Build.VERSION.SDK_INT>=30)entry.state=chars(n.getStateDescription());
+        }
+        if(Build.VERSION.SDK_INT>=34)entry.sensitive=n.isAccessibilityDataSensitive();
+        List<String> keys=n.getAvailableExtraData();if(keys!=null && !keys.isEmpty())entry.extraKeys=keys.toString();
+        return entry;
+    }
+    Page read() {return read(false);}
+    Page read(boolean diagnostic) {return read(diagnostic,false);}
+    Page readFresh() {
+        FreshReadControl.Outcome<Page> result=FreshReadControl.run(new FreshReadControl.Cache(){
+            public boolean supported(){return Build.VERSION.SDK_INT>=33;}
+            public boolean enabled(){return service.isCacheEnabled();}
+            public boolean enable(boolean value){return service.setCacheEnabled(value);}
+            public boolean clear(){return service.clearCache();}
+        },()->read(true,true));
+        if(result.value!=null)result.value.rawAudit=result.log+"\n"+result.value.rawAudit;
+        return result.value;
+    }
+    private Page read(boolean diagnostic,boolean fresh) {
         if (!unlocked()) return null;
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
         if (root == null) return null;
@@ -160,42 +202,74 @@ final class PageReader {
             // Do not inspect child nodes, text, or descriptions from another app.
             if (!targetPackage(root)) return null;
             Page page = new Page(); page.windowId = root.getWindowId();
+            ReadAudit audit=diagnostic?new ReadAudit():null;
             DisplayMetrics dims = dimensions();
             queue.push(new Entry(root, new int[0], new ArrayList<>())); root = null;
             int count = 0;
             while (!queue.isEmpty()) {
-                if (++count > 2500) throw new IllegalArgumentException("页面节点过多，请切到单题页面。");
+                if (++count > 2500) {
+                    if(audit==null)throw new IllegalArgumentException("页面节点过多，请切到单题页面。");
+                    audit.traversalLimit();break;
+                }
                 Entry e = queue.pop();
                 AccessibilityNodeInfo n = e.node;
+                ReadAudit.Node auditEntry=null;
                 try {
-                    if (!targetPackage(n)) continue;
+                    if (!descendant(n,page.windowId)) {
+                        if(audit!=null)audit.rejected(e.path,chars(n.getPackageName()),n.getWindowId(),page.windowId);
+                        continue;
+                    }
+                    if(fresh){
+                        boolean refreshed=n.refresh();audit.refreshed(e.path,refreshed);
+                        if(!refreshed)continue;
+                        if(!descendant(n,page.windowId)){
+                            audit.rejected(e.path,chars(n.getPackageName()),n.getWindowId(),page.windowId);continue;
+                        }
+                    }
                     Rect box = bounds(n);
+                    boolean isVisible=visible(n,box,dims);
+                    String raw=chars(n.getText()),description=chars(n.getContentDescription());
+                    if(audit!=null)auditEntry=auditNode(n,e.path,box,isVisible,raw,description);
                     Core.Container container = new Core.Container();
                     container.path = e.path; container.left = box.left; container.top = box.top;
                     container.right = box.right; container.bottom = box.bottom;
                     container.visible = visible(n, box, dims); container.scrollable = n.isScrollable();
                     List<Core.Container> ancestry = new ArrayList<>(e.ancestors); ancestry.add(container);
-                    List<Entry> children = new ArrayList<>(); List<String> childText = new ArrayList<>();
-                    for (int i = 0; i < n.getChildCount(); i++) {
-                        AccessibilityNodeInfo child = n.getChild(i);
-                        if (child == null) continue;
+                    List<String> childText = new ArrayList<>();
+                    int childCount=n.getChildCount();
+                    int returnedChildren=0;
+                    if(auditEntry!=null)auditEntry.children=childCount;
+                    for (int i = childCount-1; i >= 0; i--) {
                         int[] path = Arrays.copyOf(e.path, e.path.length + 1); path[path.length - 1] = i;
-                        if (targetPackage(child)) childText.add(text(child));
-                        children.add(new Entry(child, path, ancestry));
+                        AccessibilityNodeInfo child = n.getChild(i);
+                        if (child == null) {if(audit!=null)audit.missing(path);continue;}
+                        queue.push(new Entry(child,path,ancestry));returnedChildren++;
+                        if(auditEntry!=null)auditEntry.returnedChildren=returnedChildren;
+                        if (descendant(child,page.windowId)) childText.add(0,text(child));
                     }
-                    for (int i = children.size() - 1; i >= 0; i--) queue.push(children.get(i));
-                    String value = text(n);
+                    String value = AccessibleText.combine(raw,description);
                     if(n.isEditable() && value.isEmpty())value=n.getHintText()==null?"请输入答案":n.getHintText().toString();
-                    if (n.isEditable() || NodeTextPolicy.retain(value, childText)) {
+                    boolean retained=n.isEditable() || NodeTextPolicy.retain(value, childText) || (returnedChildren==0 && isVisible);
+                    if(auditEntry!=null){
+                        auditEntry.retained=retained;
+                        auditEntry.decision=retained?"进入现有识别记录":Core.clean(value).isEmpty()?"空文字容器或不可见空节点":"现有文字去重规则";
+                    }
+                    if (retained) {
                         if (value.length() > 12000) throw new IllegalArgumentException("页面文字没有拆分为独立节点。");
                         Core.Record record = new Core.Record(value, visible(n, box, dims), target(n, e.path, dims));
                         record.sourcePath = e.path; record.ancestors = ancestry;
                         record.editable=n.isEditable();
+                        record.rawDescription=n.getContentDescription()==null?"":n.getContentDescription().toString();
+                        record.nodeClass=n.getClassName()==null?"":n.getClassName().toString();
                         record.left = box.left; record.top = box.top; record.right = box.right; record.bottom = box.bottom;
                         page.records.add(record);
                     }
-                } finally { release(n); }
+                } catch(RuntimeException error) {
+                    if(audit==null)throw error;
+                    audit.error(e.path,error.getClass().getSimpleName());
+                } finally { if(auditEntry!=null)audit.node(auditEntry);release(n); }
             }
+            if(audit!=null){page.complete=audit.complete();page.rawAudit=audit.report(auditEnvironment());}
             return unlocked() ? page : null;
         } finally {
             release(root); while (!queue.isEmpty()) release(queue.pop().node);
@@ -210,7 +284,7 @@ final class PageReader {
                 AccessibilityNodeInfo child = n.getChild(index); release(n); n = child;
                 if (n == null) return false;
             }
-            if (!targetPackage(n) || (!expected.gesture && !supportsClick(n)) || !n.isEnabled()) return false;
+            if (!descendant(n,windowId) || (!expected.gesture && !supportsClick(n)) || !n.isEnabled()) return false;
             Rect r = bounds(n);
             if (!r.equals(new Rect(expected.left, expected.top, expected.right, expected.bottom))) return false;
             if (!visible(n, r, dimensions()) || !expected.signature.equals(signature(n))) return false;

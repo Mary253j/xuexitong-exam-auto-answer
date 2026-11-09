@@ -28,6 +28,10 @@ public final class QuizService extends AccessibilityService {
         volatile long retryAt;
         volatile int failures;
         volatile HttpsURLConnection connection;
+        final long startedAt=SystemClock.uptimeMillis();
+        int diagnosticSamples;
+        final StringBuilder diagnosticSummary=new StringBuilder();
+        String diagnosticRaw="尚未取得学习通页面的原始记录。";
         final Map<String, String> seen = Collections.synchronizedMap(new LinkedHashMap<String, String>() {
             @Override protected boolean removeEldestEntry(Map.Entry<String, String> e) { return size() > 500; }
         });
@@ -87,8 +91,9 @@ public final class QuizService extends AccessibilityService {
         stopRun("正在准备…");
         Run current = new Run(key, model,multiple,blankMultiple); run = current;
         AppState.lastIssue="暂无失败记录。";
+        if(diagnostic)AppState.diagnostic="正在准备本次原始节点检测，尚未读取页面。";
         if(!diagnostic){AppState.answer="正在读取题目，稍后显示模型答案。";AppState.latestTextAnswer="";}
-        report(current, diagnostic ? "5 秒后检测页面文字，请打开一道题。" : "已开始，5 秒后首次读取题目。");
+        report(current, diagnostic ? "5 秒后开始连续检测 3 次，请保持同一道题约 20 秒。" : "已开始，5 秒后首次读取题目。");
         if (diagnostic) {
             scheduled = () -> diagnose(current);
         } else {
@@ -115,29 +120,57 @@ public final class QuizService extends AccessibilityService {
         synchronized(actionLock){if(alive(current))AppState.issue(text);}
     }
     private String details(PageReader.Page page) {
+        if(!page.rawAudit.isEmpty())return page.rawAudit;
         StringBuilder result=new StringBuilder("分享前请删除页面个人信息。\n");
         for(Core.Record record:page.records){
             result.append(record.visible?"[可见] ":"[屏幕外] ").append(record.text)
                 .append(record.target==null?" [无点击操作]":record.target.gesture?" [按位置轻点]":" [原生点击]").append('\n')
                 .append("位置 ").append(record.left).append(',').append(record.top).append(',').append(record.right).append(',').append(record.bottom)
                 .append(" 节点 ").append(java.util.Arrays.toString(record.sourcePath)).append('\n');
+            if(!record.rawDescription.isEmpty() && !record.rawDescription.equals(record.text))result.append("辅助描述 ").append(record.rawDescription).append('\n');
+            if(record.text.isEmpty())result.append("此节点未提供文字；类型 ").append(record.nodeClass).append('\n');
             if(result.length()>40000){result.append("…后续省略");break;}
         }
         return result.toString();
     }
     private void diagnose(Run current) {
         if(!alive(current))return;
+        long started=SystemClock.uptimeMillis();
+        PageReader.Page page=null;String problem="",description="";
         try{
-            PageReader.Page page=reader.read();
-            if(page==null){issue(current,"没有读到学习通题目页面。请保持亮屏、解锁并打开题目后再检测。");return;}
-            AppState.diagnostic=details(page);
-            List<Core.Question> found=questions(page,current);
-            AppState.question=AppState.describe(found,current.blankMultiple);
-            report(current,"检测完成。检测按钮不请求答案；请点击“开始自动答题”来调用模型并选择选项。");
+            page=reader.readFresh();
+            if(page==null){
+                problem="没有读到学习通题目页面。请保持亮屏、解锁，并留在同一道题直到连续检测完成。";
+            }else{
+                if(!page.complete)throw new IllegalArgumentException("原始节点检测不完整，报告已标记读取异常、刷新失败或节点上限。");
+                List<Core.Question> found=questions(page,current);
+                description=AppState.describe(found,current.blankMultiple);
+            }
         }catch(IllegalArgumentException error){
-            AppState.question="题目识别未完成："+error.getMessage();issue(current,AppState.question);
-        }catch(Exception error){issue(current,"页面读取失败，请复制问题反馈以便检查。");}
-        finally{current.active.set(false);current.key="";}
+            problem="题目识别未完成："+error.getMessage();
+        }catch(Exception error){problem="页面读取失败（"+error.getClass().getSimpleName()+"），请复制问题反馈。";}
+        synchronized(actionLock){
+            if(!alive(current))return;
+            int sample=++current.diagnosticSamples;
+            current.diagnosticSummary.append("第 ").append(sample).append("/3 次，启动后 ")
+                .append(started-current.startedAt).append(" ms：");
+            if(page!=null){
+                int words=0;for(Core.Record record:page.records)if(record.visible && !Core.clean(record.text).isEmpty())words++;
+                current.diagnosticSummary.append("窗口 ").append(page.windowId).append("，可见非空记录 ").append(words).append("；");
+                current.diagnosticRaw="以下为第 "+sample+" 次采样取得的原始节点报告（各次数据不合并）：\n"+details(page);
+            }
+            current.diagnosticSummary.append(problem.isEmpty()?"已识别完整题目":problem).append('\n');
+            AppState.diagnostic="连续刷新检测进度 "+sample+"/3\n"+current.diagnosticSummary+"\n"+current.diagnosticRaw;
+            AppState.question=problem.isEmpty()?description:problem;
+            if(!problem.isEmpty())issue(current,problem);
+            if(sample<3){
+                report(current,"连续检测已完成 "+sample+"/3 次，请继续保持同一道题；检测不调用 API 或点击答案。");
+                handler.postDelayed(scheduled,Math.max(1,INTERVAL-(SystemClock.uptimeMillis()-started)));
+            }else{
+                report(current,"连续检测完成（3/3），请复制问题反馈。检测未调用 API 或点击答案。");
+                current.active.set(false);current.key="";
+            }
+        }
     }
     private void tick(Run current) {
         if(!alive(current))return;

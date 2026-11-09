@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="cn.local.quizhelper" android:versionCode="5" android:versionName="1.0.4">
+    package="cn.local.quizhelper" android:versionCode="13" android:versionName="1.0.12">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
     <queries><package android:name="com.chaoxing.mobile" /></queries>
@@ -15,6 +15,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".WebActivity" android:exported="false" />
         <service android:name=".QuizService" android:exported="true"
             android:label="题页助手 · 学习通页面操作"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

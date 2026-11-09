@@ -18,6 +18,7 @@ public final class AppState extends Application {
     public static volatile String answer = "暂无模型答案。点击“开始自动答题”后会显示在这里。";
     public static volatile String lastIssue = "暂无失败记录。";
     public static volatile String latestTextAnswer="";
+    public static volatile String webDiagnostic="尚未打开助手内的网页。";
     private static final Deque<String> history = new ArrayDeque<>();
 
     public static void add(Listener listener) { listeners.addIfAbsent(listener); }
@@ -53,10 +54,11 @@ public final class AppState extends Application {
         return out.toString();
     }
     public static String feedback() {
-        StringBuilder out=new StringBuilder("题页助手 1.0.4\n状态：").append(status)
+        StringBuilder out=new StringBuilder("题页助手 1.0.12（网页答题复查版）\n状态：").append(status)
             .append("\n最近问题：").append(lastIssue).append("\n\n").append(question)
             .append("\n\n").append(answer).append("\n\n状态记录：\n");
         synchronized(history){for(String line:history)out.append(line).append('\n');}
-        return out.append("\n详细检测（可能含页面个人信息，分享前请检查）：\n").append(diagnostic).toString();
+        return out.append("\n详细检测（可能含页面个人信息，分享前请检查）：\n").append(diagnostic)
+            .append("\n\n网页登录与加载诊断：\n").append(webDiagnostic).toString();
     }
 }
