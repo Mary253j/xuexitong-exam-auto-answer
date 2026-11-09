@@ -2,7 +2,7 @@
 
 Android 版本；安装后的应用名称为“题页助手”。
 
-[下载 Android 1.0.12 安装包](downloads/quizhelper-1.0.12.apk) · [版本发布记录](https://github.com/Mary253j/-/releases/latest) · [发布前隐私检查](PRIVACY_REVIEW.md)
+[下载 Android 1.0.12 安装包](downloads/quizhelper-1.0.12.apk) · [历史版本发布记录](https://github.com/Mary253j/xuexitong-exam-auto-answer/releases) · [发布前隐私检查](PRIVACY_REVIEW.md)
 
 当前公开版本是 **1.0.12 网页答题复查版**，操作与数据处理见 [WEB_TESTING.md](WEB_TESTING.md)。1.0.10 的网页题干和选项读取已由用户真机确认；1.0.11 接入模型与选项操作；1.0.12 修复题目顺序改变、隐藏框架和单题题号保存问题，真实手机的模型调用和点击仍待测试，仍需手机实测。已有相同签名版本可以覆盖安装。模型功能需要在手机中手动填写自己的硅基流动 API Key，仓库和安装包不提供共享 Key。
 
