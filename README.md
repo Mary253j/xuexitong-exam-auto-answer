@@ -1,4 +1,6 @@
-# 题页助手 · 独立 Android 版
+# 学习通考试自动答题
+
+Android 版本；安装后的应用名称为“题页助手”。
 
 [下载 Android 1.0.4 安装包](https://raw.githubusercontent.com/Mary253j/-/v1.0.4/downloads/quizhelper-1.0.4.apk) · [版本发布记录](https://github.com/Mary253j/-/releases/latest) · [发布前隐私检查](PRIVACY_REVIEW.md)
 
