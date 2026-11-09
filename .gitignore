@@ -1,0 +1,33 @@
+# Local build output and test artifacts
+build/
+test-out/
+__pycache__/
+*.pyc
+*.log
+*.apk
+*.aab
+
+# Credentials, signing material and local configuration
+.private/
+.env
+.env.*
+local.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*signing-password*
+
+# On-device data and diagnostic exports
+shared_prefs/
+databases/
+files/
+diagnostic.json
+diagnostic.txt
+
+# Editor / operating system files
+.idea/
+.vscode/
+.DS_Store

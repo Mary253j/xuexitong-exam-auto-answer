@@ -1,0 +1,49 @@
+{
+  "application": "题页助手",
+  "package": "cn.local.quizhelper",
+  "version": "1.0.4",
+  "apk_sha256": "e1c1e4663c677f4955f90472e90f984932f656bd319a34d676ccd05c2c8ad738",
+  "signer_certificate_sha256": "3bfc79c54debbad18cc1506a65561bfd21c69c706c284f1c9b7ee55d685b645c",
+  "same_signer_as_prior_versions": true,
+  "poll_interval_ms": 5000,
+  "changes": [
+    "Read row checkbox and explicit state descriptions; preserve stable option labels across state changes",
+    "Optional blank-multiple-choice mode, disabled by default, with persistent write-ahead toggle journal and explicit reset",
+    "Free-text reference answers for explicitly marked short-answer questions; copy only, no automatic filling",
+    "Preserve single-question and multi-question page modes, encrypted credentials and five-second polling"
+  ],
+  "declared_uses_permissions": [
+    "android.permission.INTERNET"
+  ],
+  "accessibility_service_binding_permission": "android.permission.BIND_ACCESSIBILITY_SERVICE",
+  "accessibility_target_package": "com.chaoxing.mobile",
+  "can_take_screenshot": false,
+  "can_perform_gestures": true,
+  "api_endpoint": "https://api.siliconflow.cn/v1/chat/completions",
+  "third_party_runtime_dependencies": [],
+  "blank_multiple_enabled_by_default": false,
+  "toggle_journal_stores": [
+    "question hash",
+    "answer labels",
+    "pending or sent status"
+  ],
+  "free_text_auto_fill": false,
+  "checks_passed": {
+    "core": 25,
+    "synthetic_layout": 23,
+    "transcribed_actual_diagnostic": 13,
+    "credential_envelope_desktop_provider": 10,
+    "multi_choice_and_free_text": 28
+  },
+  "manifest_and_source_constraints_checked": true,
+  "apk_signature_schemes_verified": [
+    "v2",
+    "v3"
+  ],
+  "zip_alignment_verified": true,
+  "real_device_tested": false,
+  "android_keystore_device_tested": false,
+  "physical_gesture_tap_tested": false,
+  "live_api_tested": false,
+  "third_party_security_audit": false
+}

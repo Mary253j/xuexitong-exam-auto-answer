@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">点击开始后，每 5 秒读取学习通题目页面的无障碍文字，将解析出的题干和选项发送到你配置的硅基流动模型，选择选项或显示问答题参考答案。勾选状态不明时，可自行开启空白多选题模式，须先取消已有勾选。停止时不读取页面。不截屏、不录屏、不分屏。此功能需要查看屏幕内容与代表你点击的敏感权限，请审查源码后决定是否启用。模型答案可能有误。</string>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#265DDB</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F4F7FC</item>
+        <item name="android:navigationBarColor">#F4F7FC</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>
