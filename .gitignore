@@ -31,3 +31,6 @@ diagnostic.txt
 .idea/
 .vscode/
 .DS_Store
+
+# Explicitly reviewed public release artifact
+!downloads/quizhelper-1.0.4.apk

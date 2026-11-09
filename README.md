@@ -1,6 +1,6 @@
 # 题页助手 · 独立 Android 版
 
-[下载最新版 Android 安装包](https://github.com/Mary253j/-/releases/latest) · [发布前隐私检查](PRIVACY_REVIEW.md)
+[下载 Android 1.0.4 安装包](https://raw.githubusercontent.com/Mary253j/-/v1.0.4/downloads/quizhelper-1.0.4.apk) · [版本发布记录](https://github.com/Mary253j/-/releases/latest) · [发布前隐私检查](PRIVACY_REVIEW.md)
 
 当前版本为 **1.0.4**。已有相同签名版本可以覆盖安装。下载 APK 后需要在手机中手动填写自己的硅基流动 API Key，仓库和安装包不提供共享 Key。
 
