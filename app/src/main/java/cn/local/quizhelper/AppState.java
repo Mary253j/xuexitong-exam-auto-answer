@@ -54,7 +54,7 @@ public final class AppState extends Application {
         return out.toString();
     }
     public static String feedback() {
-        StringBuilder out=new StringBuilder("题页助手 1.0.12（网页答题复查版）\n状态：").append(status)
+        StringBuilder out=new StringBuilder("题页助手 1.0.19（紧凑界面版）\n状态：").append(status)
             .append("\n最近问题：").append(lastIssue).append("\n\n").append(question)
             .append("\n\n").append(answer).append("\n\n状态记录：\n");
         synchronized(history){for(String line:history)out.append(line).append('\n');}

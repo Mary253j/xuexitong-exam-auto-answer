@@ -34,3 +34,4 @@ diagnostic.txt
 
 # Explicitly reviewed public release artifact
 !downloads/quizhelper-1.0.4.apk
+!downloads/quizhelper-1.0.19.apk

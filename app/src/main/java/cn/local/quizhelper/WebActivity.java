@@ -8,6 +8,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.net.http.SslError;
 import android.os.Bundle;
+import android.view.View;
 import android.view.WindowManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
@@ -26,12 +27,14 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.EditText;
 import android.text.InputType;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.text.TextUtils;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -43,7 +46,6 @@ import java.util.List;
 import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.json.JSONTokener;
 
 /** Official-site WebView with explicit detection and answer controls. No native JS bridge. */
 @SuppressWarnings("deprecation")
@@ -62,6 +64,7 @@ public final class WebActivity extends Activity {
     private boolean desktop;
     private WebAnswerRunner answers;
     private EditText ordinal;
+    private TextView answerText;
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private void text(LinearLayout parent,String value,int size){
         TextView item=new TextView(this);item.setText(value);item.setTextSize(size);item.setTextColor(0xff243b53);
@@ -70,41 +73,62 @@ public final class WebActivity extends Activity {
     private LinearLayout row(LinearLayout parent){
         LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);parent.addView(row);return row;
     }
-    private void button(LinearLayout row,String label,Runnable action){
+    private Button button(LinearLayout row,String label,Runnable action){
         Button button=new Button(this);button.setText(label);button.setAllCaps(false);button.setTextSize(12);
-        row.addView(button,new LinearLayout.LayoutParams(0,dp(46),1));button.setOnClickListener(v->action.run());
+        button.setMinWidth(0);button.setMinimumWidth(0);button.setMinHeight(0);button.setMinimumHeight(0);
+        button.setPadding(dp(2),0,dp(2),0);button.setSingleLine();button.setEllipsize(TextUtils.TruncateAt.END);button.setContentDescription(label);
+        row.addView(button,new LinearLayout.LayoutParams(0,dp(44),1));
+        if(action!=null)button.setOnClickListener(v->action.run());
+        return button;
     }
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         if(QuizService.instance!=null)QuizService.instance.stopRun("已停止 APP 模式，进入网页文字检测。");
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setFitsSystemWindows(true);root.setBackgroundColor(Color.WHITE);
-        text(root,"网页答题 · 不截屏",19);
-        text(root,"进入题目后点击“开始网页答题”，使用主页已保存的 API 配置，每 5 秒逐题处理。保持题页前台，完成后请自行核对并提交。",12);
-        location=new TextView(this);location.setTextSize(12);location.setPadding(dp(8),0,dp(8),0);root.addView(location);
+        ScrollView toolsBox=new ScrollView(this);toolsBox.setVisibility(View.GONE);
+        LinearLayout extraTools=new LinearLayout(this);extraTools.setOrientation(LinearLayout.VERTICAL);toolsBox.addView(extraTools);
         LinearLayout navigation=row(root);
         button(navigation,"返回助手",this::finish);
-        button(navigation,"网页后退",()->{stopAnswers("已停止网页答题。");if(web.canGoBack())web.goBack();else status.setText("没有上一页。");});
-        button(navigation,"官方首页",()->{stopAnswers("已停止网页答题。");web.loadUrl(WebAddress.START);});
-        button(navigation,"清除网页登录",this::clearLogin);
-        LinearLayout zoom=row(root);
+        button(navigation,"网页后退",()->{stopAnswers("已停止获取答案。");if(web.canGoBack())web.goBack();else status.setText("没有上一页。");});
+        Button more=button(navigation,"更多工具",null);
+        more.setOnClickListener(v->{
+            boolean expanded=toolsBox.getVisibility()!=View.VISIBLE;
+            toolsBox.setVisibility(expanded?View.VISIBLE:View.GONE);
+            more.setText(expanded?"收起工具":"更多工具");more.setContentDescription(expanded?"收起更多工具":"展开更多工具");
+        });
+        root.addView(toolsBox,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout extraNavigation=row(extraTools);
+        button(extraNavigation,"官方首页",()->{stopAnswers("已停止获取答案。");web.loadUrl(WebAddress.START);});
+        button(extraNavigation,"清除网页登录",this::clearLogin);
+        LinearLayout zoom=row(extraTools);
         button(zoom,"缩小",()->{if(!web.zoomOut())status.setText("已到当前页面最小比例；若仍显示不全，可切换电脑版。");});
         button(zoom,"放大",()->web.zoomIn());
         button(zoom,"切换手机/电脑版",this::toggleDesktop);
-        mode=new RadioGroup(this);mode.setOrientation(LinearLayout.HORIZONTAL);
-        RadioButton single=new RadioButton(this);single.setId(1);single.setText("单题：指定本页题号");single.setTextSize(12);
-        RadioButton multiple=new RadioButton(this);multiple.setId(2);multiple.setText("多题：本页可解析题");multiple.setTextSize(12);
-        mode.addView(single);mode.addView(multiple);mode.check(getSharedPreferences("settings",MODE_PRIVATE).getBoolean("web_multiple_questions",false)?2:1);root.addView(mode);
-        LinearLayout numbering=row(root);text(numbering,"单题题号",12);ordinal=new EditText(this);ordinal.setSingleLine();ordinal.setTextSize(13);ordinal.setInputType(InputType.TYPE_CLASS_NUMBER);
-        ordinal.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO);ordinal.setText(String.valueOf(getSharedPreferences("settings",MODE_PRIVATE).getInt("web_single_ordinal",1)));
-        numbering.addView(ordinal,new LinearLayout.LayoutParams(dp(60),dp(38)));
-        text(numbering,"仅用于单题模式，按本页顺序计数",11);
-        LinearLayout tools=row(root);
-        button(tools,"检测网页文字",this::detect);
+        LinearLayout tools=row(extraTools);
         button(tools,"打开题目框架",this::openFrame);
         button(tools,"复制问题反馈",this::copyFeedback);
-        LinearLayout actions=row(root);button(actions,"开始网页答题",this::startAnswers);button(actions,"停止网页答题",()->{if(answers!=null)answers.stop("已停止网页答题，已得到的答案和保存的 Key 保留。");});
-        status=new TextView(this);status.setTextSize(12);status.setMaxLines(3);status.setPadding(dp(8),dp(4),dp(8),dp(4));status.setText("进入题目后可先检测文字，再开始网页答题。");root.addView(status);
-        web=new WebView(this);root.addView(web,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
+        location=new TextView(this);location.setTextSize(12);location.setPadding(dp(8),0,dp(8),0);extraTools.addView(location);
+        text(extraTools,"单题模式按本页顺序指定题号；多题模式依次读取。本页使用主页已保存的 API 配置，每 5 秒开始读取一道，仅显示参考答案，请自行选择、填写并核对提交。",12);
+        LinearLayout numbering=row(root);numbering.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        mode=new RadioGroup(this);mode.setOrientation(LinearLayout.HORIZONTAL);
+        RadioButton single=new RadioButton(this);single.setId(1);single.setText("单题");single.setTextSize(13);single.setContentDescription("单题：指定本页题号");
+        RadioButton multiple=new RadioButton(this);multiple.setId(2);multiple.setText("多题");multiple.setTextSize(13);multiple.setContentDescription("多题：本页可解析题");
+        mode.addView(single,new RadioGroup.LayoutParams(0,dp(44),1));mode.addView(multiple,new RadioGroup.LayoutParams(0,dp(44),1));
+        mode.check(getSharedPreferences("settings",MODE_PRIVATE).getBoolean("web_multiple_questions",false)?2:1);
+        numbering.addView(mode,new LinearLayout.LayoutParams(0,dp(44),1));
+        text(numbering,"题号",12);ordinal=new EditText(this);ordinal.setSingleLine();ordinal.setTextSize(14);ordinal.setInputType(InputType.TYPE_CLASS_NUMBER);
+        ordinal.setContentDescription("单题题号，按本页顺序计数");ordinal.setEnabled(mode.getCheckedRadioButtonId()==1);
+        ordinal.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO);ordinal.setText(String.valueOf(getSharedPreferences("settings",MODE_PRIVATE).getInt("web_single_ordinal",1)));
+        numbering.addView(ordinal,new LinearLayout.LayoutParams(dp(60),dp(44)));
+        LinearLayout actions=row(root);
+        button(actions,"检测文字",this::detect).setContentDescription("检测网页文字");
+        button(actions,"获取答案",this::startAnswers).setContentDescription("获取参考答案");
+        button(actions,"停止获取",()->{if(answers!=null)answers.stop("已停止获取答案，已得到的答案和保存的 Key 保留。");}).setContentDescription("停止获取答案");
+        button(actions,"复制问答",this::copyTextAnswer).setContentDescription("复制问答答案");
+        status=new TextView(this);status.setTextSize(12);status.setMinLines(2);status.setMaxLines(2);status.setEllipsize(TextUtils.TruncateAt.END);
+        status.setPadding(dp(8),dp(2),dp(8),dp(2));status.setText("进入题目后可先检测文字，再获取参考答案。");root.addView(status);
+        ScrollView answerBox=new ScrollView(this);answerBox.setBackgroundColor(0xfff3f6fa);answerText=new TextView(this);answerText.setTextSize(14);answerText.setTextColor(0xff243b53);answerText.setPadding(dp(8),dp(4),dp(8),dp(4));answerText.setTextIsSelectable(true);answerText.setText("暂无答案，点击“获取答案”。");answerBox.addView(answerText);root.addView(answerBox,new LinearLayout.LayoutParams(-1,0,1));
+        web=new WebView(this);root.addView(web,new LinearLayout.LayoutParams(-1,0,3));setContentView(root);
         android.content.pm.PackageInfo provider=WebView.getCurrentWebViewPackage();
         webEnvironment="Android "+android.os.Build.VERSION.RELEASE+" / API "+android.os.Build.VERSION.SDK_INT+
             "；WebView "+(provider==null?"未取得版本":provider.packageName+" "+provider.versionName)+"\n";
@@ -151,7 +175,7 @@ public final class WebActivity extends Activity {
                 return new WebResourceResponse("text/plain","UTF-8",403,"Blocked",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));
             }
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){
-                stopAnswers("网页已跳转，已停止网页答题。");
+                stopAnswers("网页已跳转，已停止获取答案。");
                 loadLog.event(WebLoadLog.Event.OPEN,url,0);publishLoadLog();
                 generation++;frames.clear();location.setText("官方页面："+WebAddress.display(url)+"（不显示链接参数）");status.setText("正在加载网页；进入作业后点击检测。");
             }
@@ -172,20 +196,22 @@ public final class WebActivity extends Activity {
         answers=new WebAnswerRunner(this,new WebAnswerRunner.Host(){
             public boolean current(String url,long epoch){return web!=null && foreground && generation==epoch && WebAddress.allowed(web.getUrl()) && !WebAddress.login(web.getUrl()) && url!=null && url.equals(web.getUrl());}
             public void show(String message){status.setText(message);}
+            public void showAnswers(String text){answerText.setText(text);}
             public void evaluate(JSONObject request,WebAnswerRunner.Reply reply){
                 if(web==null || !WebAddress.allowed(web.getUrl())){reply.failed();return;}
                 try{
-                    String executable=request==null?loadScript():WebScript.bind(loadScript(),request.toString());
+                    if(request!=null){reply.failed();return;}
+                    String executable=loadScript();
                     web.evaluateJavascript(executable,value->{
                         try{reply.done(WebSnapshot.decode(value));}catch(Exception error){reply.failed();}
                     });
                 }catch(Exception error){reply.failed();}
             }
         });
-        mode.setOnCheckedChangeListener((group,id)->{stopAnswers("页面模式已改变，请重新开始网页答题。");generation++;});
+        mode.setOnCheckedChangeListener((group,id)->{ordinal.setEnabled(id==1);stopAnswers("页面模式已改变，请重新获取参考答案。");generation++;});
         ordinal.addTextChangedListener(new TextWatcher(){
             public void beforeTextChanged(CharSequence s,int start,int count,int after){}
-            public void onTextChanged(CharSequence s,int start,int before,int count){stopAnswers("题号已改变，请重新开始网页答题。");generation++;}
+            public void onTextChanged(CharSequence s,int start,int before,int count){stopAnswers("题号已改变，请重新获取参考答案。");generation++;}
             public void afterTextChanged(Editable value){}
         });
         web.loadUrl(WebAddress.START);
@@ -194,7 +220,7 @@ public final class WebActivity extends Activity {
     private void startAnswers(){
         int number=1;
         if(mode.getCheckedRadioButtonId()!=2){try{number=Integer.parseInt(ordinal.getText().toString().trim());}catch(Exception error){number=0;}}
-        if(number<1 || number>40){status.setText("请输入本页 1 到 40 范围内的题号。");return;}
+        if(number<1 || number>WebReadLimits.MAX_QUESTIONS){status.setText("请输入本页 1 到 "+WebReadLimits.MAX_QUESTIONS+" 范围内的题号。");return;}
         android.content.SharedPreferences.Editor preferences=getSharedPreferences("settings",MODE_PRIVATE).edit().putBoolean("web_multiple_questions",mode.getCheckedRadioButtonId()==2);
         if(mode.getCheckedRadioButtonId()!=2)preferences.putInt("web_single_ordinal",number);
         preferences.apply();
@@ -203,7 +229,7 @@ public final class WebActivity extends Activity {
     }
     private void publishLoadLog(){AppState.webDiagnostic=webEnvironment+"网页显示模式="+(desktop?"电脑版":"手机版")+"；按宽度适配=true；缩放=true\n"+loadLog.report();}
     private void toggleDesktop(){
-        stopAnswers("网页显示模式已改变，已停止网页答题。");
+        stopAnswers("网页显示模式已改变，已停止获取答案。");
         desktop=!desktop;getSharedPreferences("settings",MODE_PRIVATE).edit().putBoolean("web_desktop",desktop).apply();
         generation++;frames.clear();web.stopLoading();
         web.getSettings().setUserAgentString(desktop?WebUserAgent.desktop(defaultAgent):defaultAgent);
@@ -222,7 +248,7 @@ public final class WebActivity extends Activity {
         }
     }
     private void detect(){
-        stopAnswers("已停止网页答题，准备只检测文字。");
+        stopAnswers("已停止获取答案，准备只检测文字。");
         String url=web.getUrl();
         if(!WebAddress.allowed(url) || WebAddress.login(url)){status.setText("请先在官方网页自行登录并打开作业；登录表单不参与检测。");return;}
         final long ticket=++generation;final boolean multiple=mode.getCheckedRadioButtonId()==2;
@@ -239,15 +265,15 @@ public final class WebActivity extends Activity {
         }catch(Exception error){status.setText("无法执行本地网页检测脚本，请复制反馈。");AppState.issue("网页检测脚本执行未完成。");}
     }
     private void result(String encoded,boolean multiple,String url) throws Exception{
-        Object decoded=new JSONTokener(encoded).nextValue();if(!(decoded instanceof String))throw new IllegalArgumentException();
-        JSONObject object=new JSONObject((String)decoded);if(object.optInt("schema")!=1)throw new IllegalArgumentException();
+        JSONObject object=WebSnapshot.decode(encoded);
+        String readIssue=WebSnapshot.incompleteReason(object);
         JSONArray candidates=object.optJSONArray("questions"),documents=object.optJSONArray("documents"),foundFrames=object.optJSONArray("frames");
-        if(candidates==null || candidates.length()>40 || documents==null || documents.length()>12 || foundFrames==null || foundFrames.length()>12)throw new IllegalArgumentException();
+        if(candidates==null || candidates.length()>WebReadLimits.MAX_QUESTIONS || documents==null || documents.length()>12 || foundFrames==null || foundFrames.length()>12)throw new IllegalArgumentException();
         frames.clear();StringBuilder report=new StringBuilder("网页只读检测。分享前请删除页面个人信息。\n来源：").append(WebAddress.display(url))
             .append("\n未读取输入框、Cookie、登录表单或整页正文；未请求模型或操作选项。\n")
             .append("候选题目：").append(candidates.length()).append("；检测截断：").append(object.optBoolean("truncated"))
             .append("；跳过登录文档：").append(object.optInt("loginDocuments")).append("；跳过其他站点框架：").append(object.optInt("blockedFrames")).append('\n');
-        if(!object.optString("error").isEmpty())report.append("脚本提示：网页检测没有完整执行。\n");
+        if(!readIssue.isEmpty())report.append("读取提示：").append(readIssue).append('\n');
         for(int i=0;i<documents.length();i++){
             JSONObject doc=documents.getJSONObject(i);report.append("\n文档 ").append(doc.optString("location")).append("；候选容器 ").append(doc.optInt("candidates")).append('\n');
             JSONArray selectors=doc.optJSONArray("selectors");if(selectors!=null)for(int j=0;j<Math.min(10,selectors.length());j++){
@@ -288,9 +314,13 @@ public final class WebActivity extends Activity {
             }else cut=true;
         }
         if(report.length()>45000){report.setLength(45000);cut=true;}
-        if(cut)report.append("\n[反馈文字已截断]\n");
+        if(cut)report.append("\n[仅省略后续诊断明细；题目是否读取完整以“检测截断”和读取提示为准]\n");
         synchronized(blocked){if(!blocked.isEmpty())report.append("\n被拦截的站点主机名（不含路径或参数）：").append(blocked).append('\n');}
         AppState.diagnostic=report.toString();
+        if(!readIssue.isEmpty()){
+            AppState.question="网页仅读到 "+parsed.size()+" 道可解析题目，整页读取未完成。";
+            AppState.issue(readIssue);status.setText(readIssue);return;
+        }
         if(parsed.isEmpty()){
             AppState.question="尚未从网页识别到完整题目。";
             AppState.issue(frames.isEmpty()?"网页题目结构尚未适配，请复制网页检测反馈。":"题目可能在独立框架中，请点“打开题目框架”，进入后再检测。");
@@ -304,20 +334,38 @@ public final class WebActivity extends Activity {
                 }
                 shown=Collections.singletonList(byOrdinal.get(requested-1));
             }
-            StringBuilder text=new StringBuilder("网页读到 ").append(parsed.size()).append(" 道可解析题目，本次展示 ").append(shown.size()).append(" 道。请核对内容是否与网页一致。\n");
-            for(Core.Question q:shown){text.append('\n').append(q.stem).append('\n');for(Core.Option option:q.options)text.append(option.label).append(". ").append(option.text).append('\n');}
+            StringBuilder preview=new StringBuilder();int displayed=0;
+            for(Core.Question q:shown){
+                StringBuilder item=new StringBuilder("\n").append(q.stem).append('\n');
+                for(Core.Option option:q.options)item.append(option.label).append(". ").append(option.text).append('\n');
+                if(preview.length()+item.length()>WebReadLimits.PREVIEW_CHARS)break;
+                preview.append(item);displayed++;
+            }
+            StringBuilder text=new StringBuilder("网页读到 ").append(parsed.size()).append(" 道可解析题目，本次展示 ").append(displayed).append(" 道。请核对内容是否与网页一致。\n").append(preview);
+            if(displayed<shown.size())text.append("\n[仅省略后续题目预览，不影响已完整读取的题目获取答案]\n");
             AppState.question=text.toString();AppState.lastIssue=warnings>0?"检测到自定义字体标记，文字仍需核对。":"暂无失败记录。";
-            AppState.publish("网页文字检测完成：可解析 "+parsed.size()+" 道题。可在题页点击“开始网页答题”。");
-            status.setText("检测到 "+parsed.size()+" 道可解析题目。核对文字后可点击“开始网页答题”。");
+            AppState.publish("网页文字检测完成：可解析 "+parsed.size()+" 道题。可在题页点击“获取答案”。");
+            status.setText("检测到 "+parsed.size()+" 道可解析题目。核对文字后可点击“获取答案”。");
         }
     }
     private void openFrame(){
-        stopAnswers("已停止网页答题，准备打开题目框架。");
+        stopAnswers("已停止获取答案，准备打开题目框架。");
         if(frames.isEmpty()){status.setText("请先检测网页文字；若找到独立题目框架会列在这里。");return;}
         List<String> snapshot=new ArrayList<>(frames);String[] labels=new String[snapshot.size()];
         for(int i=0;i<labels.length;i++)labels[i]=(i+1)+". "+WebAddress.display(snapshot.get(i));
         new AlertDialog.Builder(this).setTitle("打开已有网页中的官方题目框架").setItems(labels,(dialog,index)->{
             String target=snapshot.get(index);if(WebAddress.allowed(target))web.loadUrl(target);
+        }).setNegativeButton("取消",null).show();
+    }
+    private void copyTextAnswer(){
+        List<WebAnswerRunner.TextReference> values=answers.textReferences();
+        if(values.isEmpty()){Toast.makeText(this,"尚无问答参考答案。请先打开简答、问答或论述题，再获取参考答案。",Toast.LENGTH_LONG).show();return;}
+        String[] labels=new String[values.size()];
+        for(int i=0;i<labels.length;i++){WebAnswerRunner.TextReference item=values.get(i);labels[i]="本页第 "+item.ordinal+" 题："+(item.stem.length()>45?item.stem.substring(0,45)+"…":item.stem);}
+        new AlertDialog.Builder(this).setTitle("选择要复制的问答题").setItems(labels,(dialog,index)->{
+            WebAnswerRunner.TextReference item=values.get(index);
+            ((ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("问答题参考答案",item.text));
+            Toast.makeText(this,"已复制第 "+item.ordinal+" 题参考答案，请核对后自行粘贴。",Toast.LENGTH_LONG).show();
         }).setNegativeButton("取消",null).show();
     }
     private void copyFeedback(){
@@ -326,14 +374,14 @@ public final class WebActivity extends Activity {
         Toast.makeText(this,"已复制。分享前请检查题目文字中的个人信息。",Toast.LENGTH_LONG).show();
     }
     private void clearLogin(){
-        stopAnswers("已停止网页答题，准备清除网页登录。");
+        stopAnswers("已停止获取答案，准备清除网页登录。");
         generation++;web.stopLoading();CookieManager.getInstance().removeAllCookies(done->{
             if(web==null)return;CookieManager.getInstance().flush();WebStorage.getInstance().deleteAllData();web.clearCache(true);web.clearFormData();web.clearHistory();web.loadUrl(WebAddress.START);
             Toast.makeText(this,"已清除助手内的网页登录状态；保存的 API Key 保留。",Toast.LENGTH_LONG).show();
         });
     }
     @Override protected void onResume(){super.onResume();foreground=true;if(web!=null)web.onResume();}
-    @Override protected void onPause(){stopAnswers("题页已离开前台，已停止网页答题；已得到的答案保留。");foreground=false;generation++;if(web!=null)web.onPause();super.onPause();}
+    @Override protected void onPause(){stopAnswers("题页已离开前台，已停止获取答案；已得到的答案保留。");foreground=false;generation++;if(web!=null)web.onPause();super.onPause();}
     @Override protected void onDestroy(){
         if(answers!=null)answers.close();
         if(web!=null){web.stopLoading();web.clearCache(true);((android.view.ViewGroup)web.getParent()).removeView(web);web.destroy();web=null;}super.onDestroy();

@@ -19,6 +19,13 @@ public final class WebQuestionTest {
         check(WebQuestionParser.parse(b).option("B").text.equals("错"),"explicit true-false rows");
         b=block();b.title="4. [简答题] 请说明计算机的发展过程。";b.options.clear();
         check(WebQuestionParser.parse(b).type.equals("text"),"explicit free-text question");
+        for(String kind:Arrays.asList("简答题","问答题","论述题")){
+            WebQuestionParser.Block essay=new WebQuestionParser.Block();essay.title="5. ("+kind+") 请说明计算机应用与社会发展的关系。";
+            Core.Question parsed=WebQuestionParser.parse(essay);
+            check(parsed.type.equals("text") && parsed.options.isEmpty() && parsed.stem.equals("请说明计算机应用与社会发展的关系。"),"all supported essay kinds preserve a complete stem without options");
+            String response="第一点：提高效率。\n第二点：改变工作方式。";
+            check(Core.validateText(parsed,parsed.id,false,response,"stop").equals(response),"essay answer paragraphs are preserved for display and copying");
+        }
         b=block();b.media=true;reject(b);
         b=block();b.truncated=true;reject(b);
         b=block();b.options.set(1,"B");reject(b);

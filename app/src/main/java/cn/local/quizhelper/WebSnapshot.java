@@ -13,14 +13,19 @@ final class WebSnapshot {
         String problem="";
     }
     static JSONObject decode(String encoded) throws Exception{
-        if(encoded==null || encoded.length()>800000)throw new IllegalArgumentException("网页回复过长或为空。");
+        if(encoded==null || encoded.length()>WebReadLimits.MAX_ENCODED_CHARS)throw new IllegalArgumentException("网页回复过长或为空。");
         Object value=new JSONTokener(encoded).nextValue();if(!(value instanceof String))throw new IllegalArgumentException("网页没有返回文字数据。");
         JSONObject result=new JSONObject((String)value);if(result.optInt("schema")!=1)throw new IllegalArgumentException("网页数据版本不匹配。");return result;
     }
+    static String incompleteReason(JSONObject data){
+        List<String> reasons=new ArrayList<>();JSONArray codes=data.optJSONArray("truncationReasons");
+        if(codes!=null)for(int i=0;i<Math.min(10,codes.length());i++)reasons.add(codes.optString(i));
+        return WebReadLimits.incompleteReason(data.optBoolean("truncated"),!data.optString("error").isEmpty(),reasons);
+    }
     static List<Entry> entries(JSONObject data) throws Exception{
-        if(data.optBoolean("truncated") || !data.optString("error").isEmpty())throw new IllegalArgumentException("本页读取不完整，已停止网页答题；请先检测文字。");
+        String problem=incompleteReason(data);if(!problem.isEmpty())throw new IllegalArgumentException(problem);
         JSONArray questions=data.optJSONArray("questions");
-        if(questions==null || questions.length()<1 || questions.length()>40)throw new IllegalArgumentException("没有读到题目，请先打开作业并检测网页文字。");
+        if(questions==null || questions.length()<1 || questions.length()>WebReadLimits.MAX_QUESTIONS)throw new IllegalArgumentException("没有读到题目或题数超出范围，请先检测网页文字。");
         List<Entry> result=new ArrayList<>();
         for(int i=0;i<questions.length();i++){
             JSONObject raw=questions.getJSONObject(i);Entry entry=new Entry();WebQuestionParser.Block block=new WebQuestionParser.Block();

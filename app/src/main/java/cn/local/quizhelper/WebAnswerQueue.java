@@ -11,7 +11,7 @@ final class WebAnswerQueue {
     private List<String> pageIdentity;
     private int cursor,selected,manual;
     WebAnswerQueue(int count,boolean multiple,int singleOrdinal){
-        if(count<1 || count>40 || (!multiple && (singleOrdinal<1 || singleOrdinal>count)))throw new IllegalArgumentException("单题题号超出本页范围，或没有完整题目。");
+        if(count<1 || count>WebReadLimits.MAX_QUESTIONS || (!multiple && (singleOrdinal<1 || singleOrdinal>count)))throw new IllegalArgumentException("单题题号超出本页范围，或没有完整题目。");
         this.count=count;ordinals=new int[multiple?count:1];
         for(int i=0;i<ordinals.length;i++)ordinals[i]=multiple?i:singleOrdinal-1;
     }

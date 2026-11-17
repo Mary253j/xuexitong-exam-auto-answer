@@ -126,10 +126,40 @@ with sync_playwright() as p:
     data=read(question()+('<div style="margin-top:5000px">'+question(2)+'</div>'))
     check(len(data['questions'])==2,'loaded multi-question document can be read without scrolling or capture')
 
-    data=read(''.join(question(i) for i in range(41)))
-    check(len(data['questions'])==40 and data['truncated'],'question cap is explicitly reported')
+    # Reproduce the long work-page family without copying the user's private HTML.
+    # Every question has different option bodies so truncated/repeated tail rows are visible.
+    def large_page(size, start=1, long_options=False):
+        repeat=12 if long_options else 1
+        return '<div class="TiMu"><div class="mark_table">'+''.join(
+            modern_question(i,bodies=[f'第{i}题选项{label}：'+('用于验证较长选项不会因整页累计字数丢失。'*repeat) for label in 'ABCD'])
+            for i in range(start,start+size))+'</div></div>'
+
+    for size in [40,41,200,390,500]:
+        data=read(large_page(size))
+        check(len(data['questions'])==size and not data['truncated'] and not data['error'],f'{size} complete questions must not hit the former 40/200 caps')
+        check([int(q['title'].split('.',1)[0]) for q in data['questions']]==list(range(1,size+1)),f'{size} questions retain their full document order')
+        check(data['questions'][-1]['options'][3].startswith(f'D. 第{size}题选项D：'),f'question {size} retains its own final option body')
+        check(all(len(q['options'])==4 and not q['truncated'] and not q['optionIssue'] for q in data['questions']),f'all {size} option groups are complete')
+        target=data['questions'][-1]['target']
+        check(page.evaluate('(target)=>{let el=document.documentElement;for(const index of target.path)el=el.children[index];return el.querySelector(".mark_name").textContent;}',target)==data['questions'][-1]['title'],f'question {size} target still resolves to the matching question')
+
+    data=read(large_page(390,long_options=True))
+    check(len(data['questions'])==390 and not data['truncated'],'390 longer questions exceeding the former 60k aggregate character budget are complete')
+    check(data['questions'][-1]['options'][3]=='D. 第390题选项D：'+('用于验证较长选项不会因整页累计字数丢失。'*12),'long page retains the entire final option instead of silently clipping it')
+
+    data=read('<div style="display:none">'+large_page(250)+'</div>'+large_page(2,start=251))
+    check(len(data['questions'])==2 and not data['truncated'],'250 hidden copies before visible questions do not consume the old 200-candidate window')
+    check([q['title'].split('.',1)[0] for q in data['questions']]==['251','252'],'visible question numbers survive hidden copies without renumbering')
+
+    data=read(large_page(501))
+    check(len(data['questions'])==500 and data['truncated'],'the new bounded question cap still explicitly reports overflow')
+    check('QUESTION_LIMIT' in data['truncationReasons'],'question-count overflow has a distinct reason instead of a generic incomplete-page message')
+    check(data['questions'][-1]['title'].startswith('500.') and data['questions'][-1]['options'][3].startswith('D. 第500题选项D：'),'overflow preserves a complete prefix, including the final retained question')
+    data=read(large_page(2001))
+    check(len(data['questions'])==500 and data['truncated'] and 'CANDIDATE_LIMIT' in data['truncationReasons'],'more than 2000 candidate containers remain bounded and explicitly diagnosed')
+
     data=read(question().replace('科学计算领域','文'*4000))
-    check(data['truncated'] and data['questions'][0]['truncated'],'field truncation is explicit')
+    check(data['truncated'] and data['questions'][0]['truncated'] and 'FIELD_LIMIT' in data['truncationReasons'],'field truncation remains explicit even after increasing page capacity')
 
     body=question(extra='<input type="checkbox" checked><textarea>private-draft</textarea>')+'<script>window.actions=0;document.addEventListener("click",()=>actions++);document.addEventListener("change",()=>actions++);</script>'
     read(body)
@@ -142,6 +172,11 @@ with sync_playwright() as p:
     before=page.evaluate('document.body.innerHTML')
     page.evaluate(SCRIPT)
     check(before==page.evaluate('document.body.innerHTML'),'modern selected-state classes must remain unchanged')
+
+    for kind in ['简答题','问答题','论述题']:
+        data=read('<div class="questionLi"><h3 class="mark_name">1. ('+kind+') 请解释计算机在办公中的作用。</h3><div contenteditable="true">private-answer-draft</div><textarea>private-text-draft</textarea></div>')
+        check(len(data['questions'])==1 and not data['questions'][0]['options'] and '请解释计算机' in data['questions'][0]['title'],'essay kinds have a readable title and no fabricated options')
+        check('private-answer-draft' not in json.dumps(data) and 'private-text-draft' not in json.dumps(data),'essay draft editors are never exported')
 
     context.close();browser.close()
 print(f'Web DOM fixture checks passed: {count} (local fixtures; no real account or device claim)')

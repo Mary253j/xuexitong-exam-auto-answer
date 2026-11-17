@@ -52,7 +52,10 @@ assert '.put("key"' not in runner and '.put("api_key"' not in runner and '.put("
 assert runner.count('session.api.key')==1 and 'session.api.key=""' in runner
 assert 'stopAnswers(' in web.split('onPause()',1)[1]
 script=(SRC/'res/raw/web_read.js').read_text()
-assert script.count('row.click()')==1
+assert '.click(' not in script
+assert 'host.tap(' not in runner and '"operation"' not in runner
+assert 'tapOwnPage' not in source
+assert 'showAnswers(AppState.answer)' in runner and 'answerText.setText(text)' in web
 for forbidden in ['.submit(', '.requestSubmit(', 'fetch(', 'XMLHttpRequest', '.value', 'getDisplayMedia', 'getUserMedia', 'navigator.mediaDevices', 'html2canvas', 'toDataURL(', 'captureStream(']:
     assert forbidden not in script, forbidden
 reader=(SRC/'java/cn/local/quizhelper/PageReader.java').read_text()
